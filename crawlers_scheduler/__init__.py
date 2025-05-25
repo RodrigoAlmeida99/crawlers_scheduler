@@ -6,13 +6,9 @@ from pathlib import Path
 
 
 scheduler_excel = Path(__file__).parent.parent / 'source' / 'Crawlers_scheduler.xlsx'
-last_exec = {}
-df = pd.read_excel(scheduler_excel)
-
 
 def exec_bat_file_checker(line, now):
     schedule_time = pd.to_datetime(str(line['Hora agendamento'])).time()
-    print(f'schedule_str: {schedule}')
     data_flow_name = line['Fluxo']
     freq = line['Frequência'].lower()
     last = line.get('Ultima Execucao')
@@ -50,7 +46,7 @@ def exec_bat_file_checker(line, now):
 def exec_flow(caminho):
     print(f"Executando: {caminho}")
     try:
-        subprocess.run(caminho, shell=True)
+        subprocess.Popen(caminho, shell=True)
         return True
     except Exception as e:
         print(f"Erro ao executar: {e}")
@@ -59,6 +55,7 @@ def exec_flow(caminho):
 
 def main():
     while True:
+            df = pd.read_excel(scheduler_excel)
             now = datetime.now()
             for idx, line in df.iterrows():
                 if  exec_bat_file_checker(line, now): 
