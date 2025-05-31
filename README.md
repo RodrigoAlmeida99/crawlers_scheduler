@@ -1,4 +1,4 @@
-# 🛠️ FME Flow Scheduler via Excel and Python
+# 🛠️ FME Flow Scheduler via PostgresSQL and Python
 
 This project provides a lightweight, Python-based scheduling system to automate the execution of `.bat` files (typically used to run FME Desktop workflows) based on a shared Excel spreadsheet hosted on SharePoint.
 

@@ -2,20 +2,22 @@ import streamlit as st
 import pandas as pd
 import os
 from datetime import datetime
+from controller import insert_scheduler, refresh_cache
+import subprocess
+from pathlib import Path
+import sys
 
 # Caminho real da planilha Excel
-CAMINHO_TABELA = r"C:\Users\ROdrigo.almeida\OneDrive - Alvarez and Marsal\Documents\Crawlers-Python\Crawlers_Scheduler\source\Crawlers_scheduler.xlsx"
-NOME_ABA = "Agendamentos"
+CACHE_PATH = str(Path(__file__).parent.parent / 'cache'  / 'scheduler_cache.pkl')
+CONTROLLER_PATH = str(Path(__file__).parent / 'controller.py')
 
-def carregar_agendamentos():
-    if os.path.exists(CAMINHO_TABELA):
-        return pd.read_excel(CAMINHO_TABELA, sheet_name=NOME_ABA)
-    else:
-        return pd.DataFrame(columns=["Nome", "Caminho", "Periodicidade", "Última Execução", "Ativo"])
+def load_cache():
+    if not os.path.exists(CACHE_PATH):
+        print("⚠️ Cache não encontrado. Gerando com controller.py...")
+        subprocess.run([sys.executable, CONTROLLER_PATH], check=True)
+    
+    return pd.read_pickle(CACHE_PATH)
 
-def salvar_agendamentos(df):
-    with pd.ExcelWriter(CAMINHO_TABELA, engine="openpyxl", mode='w') as writer:
-        df.to_excel(writer, sheet_name=NOME_ABA, index=False)
 
 # Configurações da página
 st.set_page_config(page_title="Gerenciador de Agendamentos", layout="wide")
@@ -23,7 +25,7 @@ st.set_page_config(page_title="Gerenciador de Agendamentos", layout="wide")
 st.title("📅 Gerenciador de Agendamentos de Crawlers")
 
 # Carrega os agendamentosx
-df = carregar_agendamentos()
+df = load_cache()
 
 # 🔷 Card com total de agendamentos
 col1, col2 = st.columns(2)
@@ -41,24 +43,32 @@ with st.expander("➕ Novo Agendamento"):
         with col1:
             nome = st.text_input("Nome do Fluxo")
             caminho = st.text_input("Caminho do Script ou FME")
-            periodicidade = st.selectbox("Periodicidade", ["Diário", "Semanal", "Mensal", "Outro"])
+            frequencia = st.selectbox("Periodicidade", ["Diário", "Semanal", "Mensal", "Semestral", "Manual", "Outro"])
+            tabela = st.text_input("Nome da Tabela no Banco", "")
         with col2:
-            ativo = st.checkbox("Ativo", value=True)
-            ultima_execucao = st.date_input("Última Execução (opcional)", value=None)
+            status = st.selectbox("Status", ["Ativo", "Inativo", "Exec"])
+            schema_banco = st.text_input("Schema no Banco", "")
+            data_inicio = st.date_input("Data de Início")
+            hora = st.time_input("Hora de Agendamento")
 
         enviar = st.form_submit_button("Salvar Agendamento")
 
         if enviar:
-            nova_linha = {
-                "Nome": nome,
-                "Caminho": caminho,
-                "Periodicidade": periodicidade,
-                "Última Execução": ultima_execucao if ultima_execucao else "",
-                "Ativo": ativo
+            dados = {
+                "fluxo": nome,
+                "caminho": caminho,
+                "tabela_banco": tabela or None,
+                "schema": schema_banco or None,
+                "data_inicio": data_inicio,
+                "hora": hora,
+                "frequencia": frequencia,
+                "status": status,
+                "ultima_execucao": None
             }
-            df = pd.concat([df, pd.DataFrame([nova_linha])], ignore_index=True)
-            salvar_agendamentos(df)
-            st.success(f"✅ Agendamento '{nome}' salvo com sucesso!")
+
+            insert_scheduler(dados)      # Insere no banco
+            refresh_cache()              # Atualiza o .pkl
+            st.success(f"✅ Fluxo '{nome}' salvo com sucesso!")
             st.experimental_rerun()
 
 

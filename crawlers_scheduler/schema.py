@@ -15,7 +15,7 @@ conexao = 'postgresql://' + credenciais['user'] + ':' + credenciais['password'] 
 engine = create_engine(conexao)
 Base = declarative_base()
 
-class Agendamento(Base):
+class Scheduler_table(Base):
     __tablename__ = 'crawler_scheduler'
     __table_args__ = {'schema': 'market_intelligence'}
 

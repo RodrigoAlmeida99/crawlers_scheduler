@@ -5,15 +5,17 @@ from datetime import datetime
 from pathlib import Path
 from sqlalchemy import create_engine
 from controller import refresh_cache, update_schedule
-
-
+import os
+import sys
 
 CACHE_PATH = str(Path(__file__).parent.parent / 'cache'  / 'scheduler_cache.pkl')
+CONTROLLER_PATH = str(Path(__file__).parent / 'controller.py')
 
 def load_cache():
     if not os.path.exists(CACHE_PATH):
         print("⚠️ Cache não encontrado. Gerando com controller.py...")
-        subprocess.run(["python", "controller.py"], check=True)
+        subprocess.run([sys.executable, CONTROLLER_PATH], check=True)
+
     
     return pd.read_pickle(CACHE_PATH)
 
