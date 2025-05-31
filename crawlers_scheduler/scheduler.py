@@ -95,7 +95,7 @@ def main():
         # Atualiza o cache após todos os updates
             refresh_cache()
 
-            time.sleep(300)  # Espera 5 minutos
+            time.sleep(2)  # Espera 5 minutos
 
 
 if __name__ == "__main__":
