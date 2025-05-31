@@ -50,6 +50,7 @@ def update_schedule(schedule_id: int, attributes: dict):
             setattr(schedule, attribute, value)
         session.commit()
         print(f"✅ Agendamento ID {schedule_id} atualizado.")
+        refresh_cache()
     except Exception as e:
         session.rollback()
         print(f"❌ Erro ao atualizar: {e}")

@@ -97,29 +97,48 @@ else:
     df_filtrado = df
 st.subheader("📋 Tabela de Agendamentos")
 # Cabeçalho da "tabela"
-# Cabeçalho visual com divisões
+
+# Cabeçalho da "tabela"
 colunas = st.columns([2, 3, 2, 2, 2, 2, 2, 2, 2])
 cabecalhos = ["Fluxo", "Caminho", "Tabela", "Schema", "Início", "Hora", "Frequência", "Status", "Ações"]
 for col, titulo in zip(colunas, cabecalhos):
     col.markdown(f"<div style='border-bottom: 1px solid #666; padding-bottom: 4px;'><strong>{titulo}</strong></div>", unsafe_allow_html=True)
 
-# Linhas com dados + botões
+# Linhas com dados
 for idx, row in df_filtrado.iterrows():
     cols = st.columns([2, 3, 2, 2, 2, 2, 2, 2, 2])
 
-    cols[0].markdown(f"`{row['fluxo']}`")
-    cols[1].markdown(f"`{row['caminho']}`")
-    cols[2].markdown(f"`{row['tabela_banco'] or '-'}`")
-    cols[3].markdown(f"`{row['schema'] or '-'}`")
-    cols[4].markdown(str(row["data_inicio"]))
-    cols[5].markdown(str(row["hora"]))
-    cols[6].markdown(row["frequencia"])
-    cols[7].markdown(row["status"])
+    cols[0].write(row["fluxo"])
+    cols[1].write(row["caminho"])
+    cols[2].write(row["tabela_banco"] or "-")
+    cols[3].write(row["schema"] or "-")
+    cols[4].write(str(row["data_inicio"]))
+    cols[5].write(str(row["hora"]))
+    cols[6].write(row["frequencia"])
+    cols[7].write(row["status"])
 
     col_run, col_edit = cols[8].columns(2)
-    if col_edit.button("✏️", key=f"edit_{row['id']}"):
+
+    # Botão RUN
+    if col_run.button("Rodar Agora", key=f"run_{row['id']}"):
+        update_schedule(row["id"], {"status": "Exec"})
+        st.success("🔁 Agendamento marcado como 'Exec'")
+        rerun()
+
+    # Botão EDITAR (ativa edição via session_state)
+    editando = st.session_state.get(f"editando_{row['id']}", False)
+
+    if editando:
+        if col_edit.button("❌", key=f"cancel_btn_{row['id']}"):
+            st.session_state[f"editando_{row['id']}"] = False
+            rerun()
+    else:
+        if col_edit.button("✏️ Editar", key=f"edit_btn_{row['id']}"):
+            st.session_state[f"editando_{row['id']}"] = True
+            rerun()
+    if st.session_state.get(f"editando_{row['id']}", False):
         with st.form(f"form_editar_{row['id']}"):
-            st.write("### ✏️ Editar Agendamento")
+            st.markdown(f"### ✏️ Editar Agendamento ID {row['id']}")
 
             novo_fluxo = st.text_input("Fluxo", value=row["fluxo"])
             novo_caminho = st.text_input("Caminho", value=row["caminho"])
@@ -127,8 +146,10 @@ for idx, row in df_filtrado.iterrows():
             novo_schema = st.text_input("Schema", value=row["schema"] or "")
             nova_data = st.date_input("Data de Início", value=row["data_inicio"])
             nova_hora = st.time_input("Hora", value=row["hora"])
-            nova_freq = st.selectbox("Frequência", ["Diário", "Semanal", "Mensal", "Semestral", "Manual", "Outro"], index=["Diário", "Semanal", "Mensal", "Semestral", "Manual", "Outro"].index(row["frequencia"]))
-            novo_status = st.selectbox("Status", ["Ativo", "Inativo", "Exec"], index=["Ativo", "Inativo", "Exec"].index(row["status"]))
+            nova_freq = st.selectbox("Frequência", ["Diário", "Semanal", "Mensal", "Semestral", "Manual", "Outro"],
+                                     index=["Diário", "Semanal", "Mensal", "Semestral", "Manual", "Outro"].index(row["frequencia"]))
+            novo_status = st.selectbox("Status", ["Ativo", "Inativo", "Exec"],
+                                       index=["Ativo", "Inativo", "Exec"].index(row["status"]))
 
             salvar = st.form_submit_button("💾 Salvar")
 
@@ -143,12 +164,6 @@ for idx, row in df_filtrado.iterrows():
                     "frequencia": nova_freq,
                     "status": novo_status
                 })
+                st.session_state[f"editando_{row['id']}"] = False
                 st.success("✅ Agendamento atualizado com sucesso!")
-                from streamlit import rerun
                 rerun()
-
-    if col_run.button("▶️", key=f"run_{row['id']}"):
-        update_schedule(row["id"], {"status": "Exec"})
-        st.success("🔁 Agendamento marcado como 'Exec'")
-        from streamlit import rerun
-        rerun()
