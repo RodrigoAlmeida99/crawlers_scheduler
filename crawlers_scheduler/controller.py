@@ -4,7 +4,7 @@ from datetime import datetime
 from sqlalchemy import create_engine, Column, Integer, String, Date, Time, DateTime
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
-from schema import Agendamento, Base
+from schema import Scheduler_table, Base
 from pathlib import Path
 
 CACHE_PATH = str(Path(__file__).parent.parent / 'cache'  / 'scheduler_cache.pkl')
@@ -23,7 +23,7 @@ session = Session()
 
 
 def refresh_cache():
-    df = pd.read_sql_table('agendamentos', con=engine, schema='meu_schema')
+    df = pd.read_sql_table('scheduler_table', con=engine, schema='market_intelligence')
     df.to_pickle(CACHE_PATH)
     print("✅ Cache atualizado com sucesso!")
 
@@ -31,7 +31,7 @@ def refresh_cache():
 
 def insert_scheduler(dados: dict):
     try:
-        novo = Agendamento(**dados)
+        novo = Scheduler_table(**dados)
         session.add(novo)
         session.commit()
         print(f"✅ Agendamento inserido com ID {novo.id}")
@@ -39,20 +39,19 @@ def insert_scheduler(dados: dict):
         session.rollback()
         print(f"❌ Erro ao inserir: {e}")
 
-def update_schedule(id_agendamento: int, campos: dict):
+def update_schedule(schedule_id: int, attributes: dict):
     try:
-        agendamento = session.query(Agendamento).filter_by(id=id_agendamento).first()
-        if agendamento is None:
-            print(f"❌ Agendamento ID {id_agendamento} não encontrado.")
+        schedule = session.query(Scheduler_table).filter_by(id=schedule_id).first()
+        if schedule is None:
+            print(f"❌ Agendamento ID {schedule_id} não encontrado.")
             return
-        for campo, valor in campos.items():
-            setattr(agendamento, campo, valor)
+        for attribute, value in attributes.items():
+            setattr(schedule, attribute, value)
         session.commit()
-        print(f"✅ Agendamento ID {id_agendamento} atualizado.")
+        print(f"✅ Agendamento ID {schedule_id} atualizado.")
     except Exception as e:
         session.rollback()
         print(f"❌ Erro ao atualizar: {e}")
-
 
 
 if __name__ == "__main__":
