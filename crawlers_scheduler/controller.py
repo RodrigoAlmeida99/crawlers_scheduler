@@ -6,6 +6,7 @@ from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 from schema import Scheduler_table, Base
 from pathlib import Path
+from sqlalchemy import text
 
 CACHE_PATH = str(Path(__file__).parent.parent / 'cache'  / 'scheduler_cache.pkl')
 
@@ -23,7 +24,7 @@ session = Session()
 
 
 def refresh_cache():
-    df = pd.read_sql_table('scheduler_table', con=engine, schema='market_intelligence')
+    df = pd.read_sql_table('crawler_scheduler', con=engine, schema='market_intelligence')
     df.to_pickle(CACHE_PATH)
     print("✅ Cache atualizado com sucesso!")
 
@@ -52,6 +53,23 @@ def update_schedule(schedule_id: int, attributes: dict):
     except Exception as e:
         session.rollback()
         print(f"❌ Erro ao atualizar: {e}")
+
+
+def list_schemas():
+    try:
+        with engine.connect() as conn:
+            resultado = conn.execute(text("""
+                SELECT schema_name
+                FROM information_schema.schemata
+                WHERE schema_name NOT IN ('pg_catalog', 'information_schema')
+                ORDER BY schema_name;
+            """))
+            return [row[0] for row in resultado.fetchall()]
+    except Exception as e:
+        print(f"❌ Erro ao listar schemas: {e}")
+        return []
+
+
 
 
 if __name__ == "__main__":

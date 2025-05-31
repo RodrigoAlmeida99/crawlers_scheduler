@@ -2,13 +2,14 @@ import streamlit as st
 import pandas as pd
 import os
 from datetime import datetime
-from controller import insert_scheduler, refresh_cache
+from controller import insert_scheduler, refresh_cache, list_schemas, update_schedule
 import subprocess
 from pathlib import Path
 import sys
+from streamlit import rerun
 
 # Caminho real da planilha Excel
-CACHE_PATH = str(Path(__file__).parent.parent / 'cache'  / 'scheduler_cache.pkl')
+CACHE_PATH = (Path(__file__).parent / ".." / "cache" / "scheduler_cache.pkl").resolve()
 CONTROLLER_PATH = str(Path(__file__).parent / 'controller.py')
 
 def load_cache():
@@ -32,7 +33,7 @@ col1, col2 = st.columns(2)
 with col1:
     st.metric("Total de Agendamentos", len(df))
 with col2:
-    ativos = df[df["Status"].astype(str).str.lower() == "ativo"]
+    ativos = df[df["status"].astype(str).str.lower() == "ativo"]
 
     st.metric("Agendamentos Ativos", len(ativos))
 
@@ -43,34 +44,42 @@ with st.expander("➕ Novo Agendamento"):
         with col1:
             nome = st.text_input("Nome do Fluxo")
             caminho = st.text_input("Caminho do Script ou FME")
-            frequencia = st.selectbox("Periodicidade", ["Diário", "Semanal", "Mensal", "Semestral", "Manual", "Outro"])
-            tabela = st.text_input("Nome da Tabela no Banco", "")
-        with col2:
+            frequencia = st.selectbox("Periodicidade", ["Diário", "Semanal", "Mensal", "Semestral", "Manual"])
             status = st.selectbox("Status", ["Ativo", "Inativo", "Exec"])
-            schema_banco = st.text_input("Schema no Banco", "")
+        with col2:
+            tabela = st.text_input("Nome da Tabela no Banco", "")
+            schemas_disponiveis = list_schemas()
+            schema_opcoes = ["Selecione um schema"] + schemas_disponiveis
+            schema_banco = st.selectbox("Schema no Banco", schema_opcoes)
             data_inicio = st.date_input("Data de Início")
             hora = st.time_input("Hora de Agendamento")
 
         enviar = st.form_submit_button("Salvar Agendamento")
 
         if enviar:
-            dados = {
-                "fluxo": nome,
-                "caminho": caminho,
-                "tabela_banco": tabela or None,
-                "schema": schema_banco or None,
-                "data_inicio": data_inicio,
-                "hora": hora,
-                "frequencia": frequencia,
-                "status": status,
-                "ultima_execucao": None
-            }
+            campos_obrigatorios = [nome, caminho, frequencia, status, data_inicio, hora]
+            if not all(campos_obrigatorios):
+                st.warning("⚠️ Preencha todos os campos obrigatórios antes de salvar.")
+            elif schema_banco == "Selecione um schema":
+                st.warning("⚠️ Por favor, selecione um schema válido.")
+            else:
+                dados = {
+                    "fluxo": nome,
+                    "caminho": caminho,
+                    "tabela_banco": tabela or None,
+                    "schema": schema_banco,
+                    "data_inicio": data_inicio,
+                    "hora": hora,
+                    "frequencia": frequencia,
+                    "status": status,
+                    "ultima_execucao": None
+                }
 
-            insert_scheduler(dados)      # Insere no banco
-            refresh_cache()              # Atualiza o .pkl
-            st.success(f"✅ Fluxo '{nome}' salvo com sucesso!")
-            st.experimental_rerun()
-
+                insert_scheduler(dados)
+                refresh_cache()
+                st.success(f"✅ Fluxo '{nome}' salvo com sucesso!")
+                from streamlit import rerun
+                rerun()
 
 # 🔍 Campo de busca
 st.subheader("Busca")
@@ -87,7 +96,59 @@ if buscar and termo_busca:
 else:
     df_filtrado = df
 st.subheader("📋 Tabela de Agendamentos")
-st.dataframe(df_filtrado, use_container_width=True)
+# Cabeçalho da "tabela"
+# Cabeçalho visual com divisões
+colunas = st.columns([2, 3, 2, 2, 2, 2, 2, 2, 2])
+cabecalhos = ["Fluxo", "Caminho", "Tabela", "Schema", "Início", "Hora", "Frequência", "Status", "Ações"]
+for col, titulo in zip(colunas, cabecalhos):
+    col.markdown(f"<div style='border-bottom: 1px solid #666; padding-bottom: 4px;'><strong>{titulo}</strong></div>", unsafe_allow_html=True)
 
+# Linhas com dados + botões
+for idx, row in df_filtrado.iterrows():
+    cols = st.columns([2, 3, 2, 2, 2, 2, 2, 2, 2])
 
+    cols[0].markdown(f"`{row['fluxo']}`")
+    cols[1].markdown(f"`{row['caminho']}`")
+    cols[2].markdown(f"`{row['tabela_banco'] or '-'}`")
+    cols[3].markdown(f"`{row['schema'] or '-'}`")
+    cols[4].markdown(str(row["data_inicio"]))
+    cols[5].markdown(str(row["hora"]))
+    cols[6].markdown(row["frequencia"])
+    cols[7].markdown(row["status"])
 
+    col_run, col_edit = cols[8].columns(2)
+    if col_edit.button("✏️", key=f"edit_{row['id']}"):
+        with st.form(f"form_editar_{row['id']}"):
+            st.write("### ✏️ Editar Agendamento")
+
+            novo_fluxo = st.text_input("Fluxo", value=row["fluxo"])
+            novo_caminho = st.text_input("Caminho", value=row["caminho"])
+            nova_tabela = st.text_input("Tabela no banco", value=row["tabela_banco"] or "")
+            novo_schema = st.text_input("Schema", value=row["schema"] or "")
+            nova_data = st.date_input("Data de Início", value=row["data_inicio"])
+            nova_hora = st.time_input("Hora", value=row["hora"])
+            nova_freq = st.selectbox("Frequência", ["Diário", "Semanal", "Mensal", "Semestral", "Manual", "Outro"], index=["Diário", "Semanal", "Mensal", "Semestral", "Manual", "Outro"].index(row["frequencia"]))
+            novo_status = st.selectbox("Status", ["Ativo", "Inativo", "Exec"], index=["Ativo", "Inativo", "Exec"].index(row["status"]))
+
+            salvar = st.form_submit_button("💾 Salvar")
+
+            if salvar:
+                update_schedule(row["id"], {
+                    "fluxo": novo_fluxo,
+                    "caminho": novo_caminho,
+                    "tabela_banco": nova_tabela,
+                    "schema": novo_schema,
+                    "data_inicio": nova_data,
+                    "hora": nova_hora,
+                    "frequencia": nova_freq,
+                    "status": novo_status
+                })
+                st.success("✅ Agendamento atualizado com sucesso!")
+                from streamlit import rerun
+                rerun()
+
+    if col_run.button("▶️", key=f"run_{row['id']}"):
+        update_schedule(row["id"], {"status": "Exec"})
+        st.success("🔁 Agendamento marcado como 'Exec'")
+        from streamlit import rerun
+        rerun()
