@@ -12,19 +12,32 @@ By leveraging a shared Excel file, users can independently configure and manage 
 
 ## ⚙️ How It Works
 
-1. A shared Excel file (hosted on SharePoint or synced via OneDrive) contains all scheduling instructions.
-2. A Python script runs in the background (as a Windows Service or Task Scheduler job) on a Windows Server where FME Desktop is installed.
-3. The script:
-   - Reads the Excel file periodically
-   - Checks whether a flow is due for execution
-   - Executes the associated `.bat` file if conditions are met
-   - Updates the "Last Execution" field in the spreadsheet to prevent duplicate runs
+## 🔄 Project Overview
+
+This project automates the scheduling and execution of data flows using Python and FME Desktop, now integrated with a PostgreSQL database and local cache for improved reliability and performance.
+
+### 📌 Key Components
+
+1. **PostgreSQL Database**  
+   All scheduling instructions are stored in a PostgreSQL table, replacing the previous Excel-based approach.
+
+2. **Python Script (Scheduled Execution)**  
+   A Python script runs periodically in the background (via Task Scheduler or Windows Service) on a Windows Server where FME Desktop is installed. It performs the following tasks:
+   - Loads scheduling data from a `.pkl` cache file.
+   - The cache is refreshed from the PostgreSQL database using SQLAlchemy when necessary.
+   - Checks if a flow is due for execution based on schedule time and frequency.
+   - Executes the corresponding `.bat` file linked to the flow.
+   - Updates the `last_execution` timestamp in the database to prevent duplicate runs.
+
+3. **Local Cache (`.pkl`)**  
+   A serialized cache file (`scheduler_cache.pkl`) is used to minimize repeated database queries and optimize runtime performance. The cache is updated via the `refresh_cache()` function when needed.
+
 
 ---
 
-## 📁 Excel File Structure
+## 📁 Table  Structure
 
-The Excel file should contain the following columns:
+The Table should contain the following columns:
 
 | Column Name             | Description                                                                 |
 |-------------------------|-----------------------------------------------------------------------------|
@@ -59,4 +72,6 @@ The Excel file should contain the following columns:
 - FME Desktop installed
 - [pandas](https://pandas.pydata.org/) installed (`pip install pandas`)
 - File synchronization via OneDrive or mapped SharePoint directory
+- [streamlit](https://docs.streamlit.io/get-started/installation) installed (`pip install streamlit`)
+- [sqlalchemy](https://pypi.org/project/SQLAlchemy/) installed (`pip install SQLAlchemy`)
 
