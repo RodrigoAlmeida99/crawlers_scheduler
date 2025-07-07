@@ -7,10 +7,34 @@ import subprocess
 from pathlib import Path
 import sys
 from streamlit import rerun
+import base64
+from dotenv import load_dotenv, find_dotenv
+import os
+
+dotenv_path = find_dotenv()
+load_dotenv(dotenv_path)
 
 # Caminho real da planilha Excel
 CACHE_PATH = (Path(__file__).parent / ".." / "cache" / "scheduler_cache.pkl").resolve()
 CONTROLLER_PATH = str(Path(__file__).parent / 'controller.py')
+
+
+def path_transformer(caminho_completo):
+    # Remove aspas e normaliza separadores
+    caminho_limpo = caminho_completo.strip().replace('"', '')
+    caminho_normalizado = os.path.normpath(caminho_limpo)
+
+    # Quebra em partes (agora funciona mesmo com barra invertida)
+    partes = caminho_normalizado.split(os.sep)
+
+    try:
+        idx = next(i for i, parte in enumerate(partes) if "Alvarez and Marsal" in parte)
+        partes_filtradas = partes[idx:]  # Mantém da pasta desejada em diante
+        return os.path.join(*partes_filtradas)
+    except StopIteration:
+        return caminho_normalizado
+
+
 
 def load_cache():
     if not os.path.exists(CACHE_PATH):
@@ -23,10 +47,28 @@ def load_cache():
 # Configurações da página
 st.set_page_config(page_title="Gerenciador de Agendamentos", layout="wide")
 
-st.title("📅 Gerenciador de Agendamentos de Crawlers")
+
+logo_path = Path(__file__).parent / ".." / "assets" / "A&M_Corporate_White.png"
+def get_base64_image(image_path):
+    with open(image_path, "rb") as img_file:
+        return base64.b64encode(img_file.read()).decode()
+
+logo_base64 = get_base64_image(logo_path)
+st.markdown(
+    f"""
+    <div style='display: flex; align-items: center; gap: 15px; margin-bottom: 20px;'>
+        <img src="data:image/png;base64,{logo_base64}" width="50">
+        <h1 style='margin: 0; padding: 0;'>Gerenciador de Agendamentos de Crawlers</h1>
+    </div>
+    """,
+    unsafe_allow_html=True
+)
+
 
 # Carrega os agendamentosx
 df = load_cache()
+
+
 
 # 🔷 Card com total de agendamentos
 col1, col2 = st.columns(2)
@@ -65,7 +107,7 @@ with st.expander("➕ Novo Agendamento"):
             else:
                 dados = {
                     "fluxo": nome,
-                    "caminho": caminho,
+                    "caminho": path_transformer(caminho),
                     "tabela_banco": tabela or None,
                     "schema": schema_banco,
                     "data_inicio": data_inicio,
@@ -77,6 +119,7 @@ with st.expander("➕ Novo Agendamento"):
 
                 insert_scheduler(dados)
                 refresh_cache()
+                st.cache_data.clear()
                 st.success(f"✅ Fluxo '{nome}' salvo com sucesso!")
                 from streamlit import rerun
                 rerun()
@@ -99,14 +142,14 @@ st.subheader("📋 Tabela de Agendamentos")
 # Cabeçalho da "tabela"
 
 # Cabeçalho da "tabela"
-colunas = st.columns([2, 3, 2, 2, 2, 2, 2, 2, 2])
-cabecalhos = ["Fluxo", "Caminho", "Tabela", "Schema", "Início", "Hora", "Frequência", "Status", "Ações"]
+colunas = st.columns([2, 3, 2, 2, 2, 2, 2, 2, 2, 2]) 
+cabecalhos = ["Fluxo", "Caminho", "Tabela", "Schema", "Início", "Hora", "Frequência", "Status","Última execução" , "Ações"]
 for col, titulo in zip(colunas, cabecalhos):
     col.markdown(f"<div style='border-bottom: 1px solid #666; padding-bottom: 4px;'><strong>{titulo}</strong></div>", unsafe_allow_html=True)
 
 # Linhas com dados
 for idx, row in df_filtrado.iterrows():
-    cols = st.columns([2, 3, 2, 2, 2, 2, 2, 2, 2])
+    cols = st.columns([2, 3, 2, 2, 2, 2, 2, 2, 2, 2]) 
 
     cols[0].write(row["fluxo"])
     cols[1].write(row["caminho"])
@@ -116,26 +159,32 @@ for idx, row in df_filtrado.iterrows():
     cols[5].write(str(row["hora"]))
     cols[6].write(row["frequencia"])
     cols[7].write(row["status"])
+    cols[8].write(str(row["ultima_execucao"]))
 
-    col_run, col_edit = cols[8].columns(2)
+    with cols[9]:
+        col_run, col_edit = st.columns([1, 1])
+        
+        run_key = f"run_{row['id']}_{idx}"
+        cancel_key = f"cancel_btn_{row['id']}_{idx}"
+        edit_key = f"edit_btn_{row['id']}_{idx}"
+        
+        with col_run:
+            if st.button("Rodar Agora", key=run_key):
+                update_schedule(row["id"], {"status": "Exec"})
+                st.success("🔁 Agendamento marcado como 'Exec'")
+                rerun()
 
-    # Botão RUN
-    if col_run.button("Rodar Agora", key=f"run_{row['id']}"):
-        update_schedule(row["id"], {"status": "Exec"})
-        st.success("🔁 Agendamento marcado como 'Exec'")
-        rerun()
-
-    # Botão EDITAR (ativa edição via session_state)
-    editando = st.session_state.get(f"editando_{row['id']}", False)
-
-    if editando:
-        if col_edit.button("❌", key=f"cancel_btn_{row['id']}"):
-            st.session_state[f"editando_{row['id']}"] = False
-            rerun()
-    else:
-        if col_edit.button("✏️ Editar", key=f"edit_btn_{row['id']}"):
-            st.session_state[f"editando_{row['id']}"] = True
-            rerun()
+        with col_edit:
+            if st.session_state.get(f"editando_{row['id']}", False):
+                if st.button("❌", key=cancel_key):
+                    st.session_state[f"editando_{row['id']}"] = False
+                    rerun()
+            else:
+                if st.button("✏️ Editar", key=edit_key):
+                    st.session_state[f"editando_{row['id']}"] = True
+                    rerun()
+    
+    
     if st.session_state.get(f"editando_{row['id']}", False):
         with st.form(f"form_editar_{row['id']}"):
             st.markdown(f"### ✏️ Editar Agendamento ID {row['id']}")
@@ -167,3 +216,32 @@ for idx, row in df_filtrado.iterrows():
                 st.session_state[f"editando_{row['id']}"] = False
                 st.success("✅ Agendamento atualizado com sucesso!")
                 rerun()
+
+with st.expander("📘 Tutorial: Como agendar um fluxo", expanded=False):
+        st.markdown(
+            r"""
+            ### ✅ Passo a passo para agendar corretamente:
+
+            **1. Salvar o fluxo no SharePoint**
+            - Acesse a pasta de projetos no SharePoint.
+            - Salve o fluxo FME (`.fmw`) dentro da pasta apropriada.
+            - Copie o **link do arquivo salvo** e mantenha como referência.
+
+            **2. Criar o arquivo .bat para execução**
+            - Rode o FME manualmente uma vez.
+            - Copie a **primeira linha do log** onde aparece o executável com argumentos, por exemplo:
+            ```
+            "C:\Program Files\FME\fme.exe" caminho_do_fluxo.fmw ...
+            ```
+            - Cole isso dentro de um arquivo `.bat` e salve na máquina.
+
+            **3. Agendar o fluxo na interface**
+            - Clique em **"Novo Agendamento"**.
+            - Preencha os campos com:
+                - Nome do fluxo
+                - Caminho do arquivo `.bat` (ex: C:\Users\user\Alvarez and Marsal\Market Intelligence & Research - Documents\General\04. Crawlers\Fluxos\arquivo.bat)
+                - Tabela e schema no banco (se aplicável)
+                - Horário e frequência
+            - Clique em **Salvar Agendamento** ✅
+            """
+        )

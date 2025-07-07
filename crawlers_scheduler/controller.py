@@ -26,7 +26,7 @@ session = Session()
 def refresh_cache():
     df = pd.read_sql_table('crawler_scheduler', con=engine, schema='market_intelligence')
     df.to_pickle(CACHE_PATH)
-    print("✅ Cache atualizado com sucesso!")
+    print("Cache atualizado com sucesso!")
 
 
 
@@ -35,25 +35,25 @@ def insert_scheduler(dados: dict):
         novo = Scheduler_table(**dados)
         session.add(novo)
         session.commit()
-        print(f"✅ Agendamento inserido com ID {novo.id}")
+        print(f"Agendamento inserido com ID {novo.id}")
     except Exception as e:
         session.rollback()
-        print(f"❌ Erro ao inserir: {e}")
+        print(f"Erro ao inserir: {e}")
 
 def update_schedule(schedule_id: int, attributes: dict):
     try:
         schedule = session.query(Scheduler_table).filter_by(id=schedule_id).first()
         if schedule is None:
-            print(f"❌ Agendamento ID {schedule_id} não encontrado.")
+            print(f"Agendamento ID {schedule_id} não encontrado.")
             return
         for attribute, value in attributes.items():
             setattr(schedule, attribute, value)
         session.commit()
-        print(f"✅ Agendamento ID {schedule_id} atualizado.")
+        print(f"Agendamento ID {schedule_id} atualizado.")
         refresh_cache()
     except Exception as e:
         session.rollback()
-        print(f"❌ Erro ao atualizar: {e}")
+        print(f"Erro ao atualizar: {e}")
 
 
 def list_schemas():
@@ -67,7 +67,7 @@ def list_schemas():
             """))
             return [row[0] for row in resultado.fetchall()]
     except Exception as e:
-        print(f"❌ Erro ao listar schemas: {e}")
+        print(f"Erro ao listar schemas: {e}")
         return []
 
 
