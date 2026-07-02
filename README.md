@@ -1,8 +1,8 @@
-# Crawlers Scheduler — a zero-cost, self-hosted orchestrator for FME & Python
+# Crawlers Scheduler: a zero-cost, self-hosted orchestrator for FME & Python
 
-> A lightweight orchestration and monitoring platform that gives a data team the parts of **Apache Airflow** it actually needed — scheduling, execution, retries-by-status, centralized logging and team-wide observability — **without the infrastructure, licensing or operational cost** of a full orchestrator.
+> A lightweight orchestration and monitoring platform that gives a data team the parts of **Apache Airflow** it actually needed (scheduling, execution, retries-by-status, centralized logging and team-wide observability) **without the infrastructure, licensing or operational cost** of a full orchestrator.
 
-**Idealized, designed and built by Rodrigo Almeida.** What started as a small "schedule a few FME flows from a spreadsheet" utility grew, by deliberate iteration, into the backbone that runs the team's entire crawler fleet — today orchestrating **both FME workflows (`.fmw`) and Python crawlers (`.py`)** side by side.
+**Idealized, designed and built by Rodrigo Almeida.** What started as a small "schedule a few FME flows from a spreadsheet" utility grew, by deliberate iteration, into the backbone that runs the team's entire crawler fleet. Today it orchestrates **both FME workflows (`.fmw`) and Python crawlers (`.py`)** side by side.
 
 ---
 
@@ -27,13 +27,13 @@
 
 ## Why this exists
 
-The team maintains a **growing fleet of ~30 data crawlers** — some authored in [FME](https://www.safe.com/) by analysts, others written in Python by engineers. They feed a PostgreSQL data warehouse that powers downstream Market Intelligence & Research work.
+The team maintains a **growing fleet of 100+ data crawlers**, some authored in [FME](https://www.safe.com/) by analysts, others written in Python by engineers. They feed a PostgreSQL data warehouse that powers downstream Market Intelligence & Research work.
 
 As the fleet grew, three problems appeared at once:
 
 1. **Scheduling was manual and tribal.** Each flow ran off someone's machine, a lone Task Scheduler entry, or by hand. There was no single place that answered *"what runs, when, and did it succeed?"*
 2. **There was no shared visibility.** When a crawler broke, nobody knew until the data was stale. Failures were invisible to the rest of the team.
-3. **The obvious tool didn't fit.** Apache Airflow (or Prefect, Dagster, Jenkins) is the textbook answer — but it assumes a Linux host, a container/scheduler infrastructure, an engineering team to babysit the DAGs, and budget. In this context (a **Windows Server**, no dedicated platform budget, and **non-engineer teammates who need to register their own flows**), standing up Airflow would have cost more to run than the crawlers it managed.
+3. **The obvious tool didn't fit.** Apache Airflow (or Prefect, Dagster, Jenkins) is the textbook answer, but it assumes a Linux host, a container/scheduler infrastructure, an engineering team to babysit the DAGs, and budget. In this context (a **Windows Server**, no dedicated platform budget, and **non-engineer teammates who need to register their own flows**), standing up Airflow would have cost more to run than the crawlers it managed.
 
 So the goal became explicit: **reproduce the 20% of an orchestrator that delivered 80% of the value**, on the infrastructure we already had, at zero licensing cost, and make it usable by people who don't write code.
 
@@ -54,7 +54,7 @@ An orchestrator looks simple until you build one. Airflow ships years of solved 
 | A DAG authoring interface | A **Streamlit** self-service UI so any teammate registers a flow with no code | [`streamlit_scheduler.py`](crawlers_scheduler/streamlit_scheduler.py) |
 | A homogeneous runtime | A **multi-runtime dispatcher** that runs both FME `.fmw` and Python `.py` from one queue | [`scheduler.py`](crawlers_scheduler/scheduler.py) |
 
-The difficulty was never any single feature — it was that a credible orchestrator needs *all of them working together, reliably, unattended, on Windows.*
+The difficulty was never any single feature, it was that a credible orchestrator needs *all of them working together, reliably, unattended, on Windows.*
 
 ---
 
@@ -113,10 +113,10 @@ flowchart TD
 3. **Evaluate every schedule** through `exec_bat_file_checker(...)`, which decides *whether this flow is due right now* based on its frequency, last-execution timestamp and status.
 4. **Dispatch due flows** through `execute_with_queue(...)`:
    - resolves the flow's real path (see the OneDrive/SharePoint saga below),
-   - routes by extension — `.py` → `python -u`, `.fmw` → the FME Form executable,
+   - routes by extension: `.py` → `python -u`, `.fmw` → the FME Form executable,
    - enforces the concurrency ceiling, blocking new launches while the queue is full,
    - streams each run's `stdout`/`stderr` into its **own timestamped log file**.
-5. **Reap finished processes** (`reap_running`): polls each child, and on exit writes the outcome back to Postgres — `Ativo` on exit code `0`, `Erro` otherwise.
+5. **Reap finished processes** (`reap_running`): polls each child, and on exit writes the outcome back to Postgres (`Ativo` on exit code `0`, `Erro` otherwise).
 
 Everything is wrapped in defensive logging (rotating file handler) so an unattended server run is fully auditable after the fact.
 
@@ -128,13 +128,13 @@ Rather than cron strings, schedules are expressed in business terms that a non-e
 
 | Frequency | Fires when… |
 |---|---|
-| `manual` | Never automatically — only when a human requests it from the UI |
+| `manual` | Never automatically; only when a human requests it from the UI |
 | `diário` (daily) | Once per day, once the target time has passed and it hasn't run today |
 | `semanal` (weekly) | Once per week, on the same weekday as the start date |
 | `mensal` (monthly) | Once per month, on the same day-of-month as the start date |
 | `semestral` (semiannual) | Every ~6 months, on the anchor day-of-month |
 
-All time math is timezone-aware (`America/Sao_Paulo`), and the **last-execution timestamp is the guard against duplicate runs** — the same idempotency concern Airflow solves with execution dates, solved here explicitly.
+All time math is timezone-aware (`America/Sao_Paulo`), and the **last-execution timestamp is the guard against duplicate runs**, the same idempotency concern Airflow solves with execution dates, solved here explicitly.
 
 ---
 
@@ -165,10 +165,10 @@ stateDiagram-v2
 
 [`alert.py`](crawlers_scheduler/alert.py) turns raw logs into actionable signal:
 
-- **Efficient tailing** — reads only the last *N* lines of each log by seeking from the end, never loading large files into memory.
-- **Error extraction** — regex-matches `ERROR` / `FATAL` / `EXCEPTION`, parses timestamp / level / message / line number / code where present.
-- **De-duplication** — each error is fingerprinted (SHA-256 over its salient fields) with a TTL, so a crashing flow doesn't spam identical alerts ("alert storm" protection).
-- **Telemetry** — surviving errors are shipped to **Azure Application Insights** (`track_trace` / `track_event` / `track_exception`), enriched with flow name, status, path and crawler id, so the team gets **fleet-wide monitoring and alerting** in a tool it already uses.
+- **Efficient tailing**: reads only the last *N* lines of each log by seeking from the end, never loading large files into memory.
+- **Error extraction**: regex-matches `ERROR` / `FATAL` / `EXCEPTION`, parses timestamp / level / message / line number / code where present.
+- **De-duplication**: each error is fingerprinted (SHA-256 over its salient fields) with a TTL, so a crashing flow doesn't spam identical alerts ("alert storm" protection).
+- **Telemetry**: surviving errors are shipped to **Azure Application Insights** (`track_trace` / `track_event` / `track_exception`), enriched with flow name, status, path and crawler id, so the team gets **fleet-wide monitoring and alerting** in a tool it already uses.
 
 This is the piece that fulfilled the original mandate: *make crawler failures visible to the whole team the moment they happen.*
 
@@ -185,7 +185,7 @@ This is the piece that fulfilled the original mandate: *make crawler failures vi
 - **run a flow on demand**, **edit** or **delete** it,
 - open a flow's **most recent log** in an in-app viewer with tail + error-only filtering + download.
 
-Lowering the barrier to "code-free self-service" was a first-class design goal — it's what let non-engineers own their own schedules instead of filing tickets.
+Lowering the barrier to "code-free self-service" was a first-class design goal: it's what let non-engineers own their own schedules instead of filing tickets.
 
 ---
 
@@ -198,27 +198,27 @@ Lowering the barrier to "code-free self-service" was a first-class design goal �
 | `id` | Integer (PK) | Unique schedule id |
 | `fluxo` | String | Human-readable flow name |
 | `caminho` | String | Path to the `.py` / `.fmw` to execute |
-| `tabela_banco` | String | Target table(s) — documentation / lineage (CSV for multiple) |
+| `tabela_banco` | String | Target table(s): documentation / lineage (CSV for multiple) |
 | `schema` | String | Target database schema |
 | `data_inicio` | Date | Anchor date for the scheduling cadence |
 | `hora` | Time | Time-of-day to fire |
 | `frequencia` | String | `diário` / `semanal` / `mensal` / `semestral` / `manual` |
 | `status` | String | State-machine value (see above) |
-| `ultima_execucao` | DateTime | Last run — the idempotency guard, auto-updated by the engine |
+| `ultima_execucao` | DateTime | Last run: the idempotency guard, auto-updated by the engine |
 | `industry` | String | Business grouping used by the UI tree |
 
 ---
 
 ## Engineering challenges solved
 
-These are the problems that made the project genuinely hard — the kind that don't show up in a tutorial:
+These are the problems that made the project genuinely hard, the kind that don't show up in a tutorial:
 
-- **🗂️ The OneDrive/SharePoint path labyrinth.** Flows are stored on synced SharePoint libraries, so the *same file* has different absolute paths on different machines — PT vs. EN library names (`Documentos…` vs. `…Documents`), a legacy layout (`…\04. Crawlers\Fluxos`) vs. a newer one (`…\Market Intelligence & Research - Fluxos`), and double-space quirks from the sync client. `path_transformer` resolves a stored path against every plausible root and prefix combination — case-insensitively, with a filename-based recursive fallback — so a schedule registered on one machine still runs on the server. This single function absorbed an enormous amount of real-world messiness.
+- **🗂️ The OneDrive/SharePoint path labyrinth.** Flows are stored on synced SharePoint libraries, so the *same file* has different absolute paths on different machines: PT vs. EN library names (`Documentos…` vs. `…Documents`), a legacy layout (`…\04. Crawlers\Fluxos`) vs. a newer one (`…\Market Intelligence & Research - Fluxos`), and double-space quirks from the sync client. `path_transformer` resolves a stored path against every plausible root and prefix combination, case-insensitively, with a filename-based recursive fallback, so a schedule registered on one machine still runs on the server. This single function absorbed an enormous amount of real-world messiness.
 - **🪟 Windows subprocess gotchas.** Unattended child processes on Windows fight you: block-buffered stdout made logs appear empty mid-run (fixed with `python -u` + `PYTHONUNBUFFERED`), the default `cp1252` codec crashed any flow that printed `✓`/accents/emoji (fixed by forcing `PYTHONIOENCODING=utf-8`), and stray console windows had to be suppressed (`CREATE_NO_WINDOW`).
 - **⚖️ Concurrency without a real executor.** Uncontrolled parallel launches would swamp the server and FME licenses. A hand-rolled bounded queue with process reaping provides back-pressure and a hard ceiling.
 - **🔁 Idempotency & duplicate-run prevention.** The `Executando` lock plus the `ultima_execucao` guard together ensure a flow fires exactly once per due window even though the loop wakes every 5 seconds.
 - **⚡ DB pressure vs. freshness.** The pickle hot-cache decouples a fast polling loop from the metadata DB while write-through refreshes keep it correct.
-- **👥 Usability for non-engineers.** The hardest "soft" constraint: the whole thing is only useful if an analyst can adopt it without help — which drove the Streamlit UI and the business-language scheduling model.
+- **👥 Usability for non-engineers.** The hardest "soft" constraint: the whole thing is only useful if an analyst can adopt it without help, which drove the Streamlit UI and the business-language scheduling model.
 
 ---
 
@@ -261,8 +261,8 @@ Configuration lives in `.env` (DB credentials + the Azure instrumentation key) a
 
 Part of showing engineering maturity is naming what a system *doesn't* do:
 
-- **Polling, not event-driven.** A 5-second loop is simple and robust but not sub-second precise — perfectly adequate for daily/weekly data jobs, not for low-latency triggers.
-- **No dependency DAGs (yet).** Flows are scheduled independently; there's no "run B after A succeeds" edge. This was a conscious scope cut — the fleet is embarrassingly parallel.
+- **Polling, not event-driven.** A 5-second loop is simple and robust but not sub-second precise: perfectly adequate for daily/weekly data jobs, not for low-latency triggers.
+- **No dependency DAGs (yet).** Flows are scheduled independently; there's no "run B after A succeeds" edge. This was a conscious scope cut: the fleet is embarrassingly parallel.
 - **Single-node.** The engine runs on one Windows host. That's a feature for this context (simplicity, cost) and a ceiling for scale.
 - **Retries are manual/status-driven** rather than automatic with backoff.
 - **Secrets via `.env`.** Fine for a trusted internal host; a managed secret store would be the next step for a broader deployment.
@@ -283,4 +283,4 @@ Every one of these was an intentional trade to hit the real objective: *maximum 
 
 ### Author
 
-**Rodrigo Almeida** — conceived, architected and implemented end to end. The system evolved from a single-purpose FME scheduler into a general-purpose, multi-runtime orchestrator that the team relies on daily to keep its data fresh.
+**Rodrigo Almeida.** Conceived, architected and implemented end to end. The system evolved from a single-purpose FME scheduler into a general-purpose, multi-runtime orchestrator that the team relies on daily to keep its data fresh.
