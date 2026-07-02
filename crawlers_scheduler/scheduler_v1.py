@@ -25,7 +25,7 @@ formatter = logging.Formatter('%(asctime)s | %(levelname)s | %(message)s')
 handler.setFormatter(formatter)
 logger.handlers.clear()
 logger.addHandler(handler)
-logger.propagate = False  # garante que nada "vaze" e duplique
+logger.propagate = False  # garante que nada “vaze” e duplique
 
 CACHE_PATH = str(Path(__file__).parent.parent / 'cache' / 'scheduler_cache.pkl')
 CONTROLLER_PATH = str(Path(__file__).parent / 'controller.py')
@@ -34,11 +34,9 @@ FME_EXE = r"C:\Program Files\FME-Form\fme.exe"
 # Fila e limite global
 process_queue = []
 MAX_CONCURRENT = 2
-CACHE_REFRESH_INTERVAL = 3600  # segundos (1 hora)
 
 # Mapa de processos por agendamento
 running = {}  # { schedule_id: {"proc": Popen, "log": Path, "started_at": datetime} }
-last_cache_refresh = None  # datetime do último refresh
 
 def load_cache():
     if not os.path.exists(CACHE_PATH):
@@ -70,7 +68,7 @@ def reap_running():
         p = info["proc"]
         rc = p.poll()
         if rc is not None:  # processo terminou
-            logger.info(f"[id={sid}] Processo terminou com exit_code={rc}, log={info['log']}")
+            logger.info(f"[id={sid}] FME terminou com exit_code={rc}, log={info['log']}")
             try:
                 update_schedule(sid, {'status': 'Ativo' if rc == 0 else 'Erro'})
             except Exception:
@@ -78,7 +76,7 @@ def reap_running():
             finished.append(sid)
             try:
                 # fecha handle do log se ainda estiver aberto
-                if "f_out" in info:
+                if hasattr(info, "f_out"):
                     f = info["f_out"]
                     try:
                         f.flush()
@@ -92,7 +90,7 @@ def reap_running():
 
 def path_transformer(caminho_original: str) -> Path:
     """
-    Resolve o caminho do fluxo .fmw/.py considerando:
+    Resolve o caminho do fluxo .fmw considerando:
     - variações OneDrive / bibliotecas PT/EN (como antes)
     - novo layout de sync no servidor: após "Alvarez and Marsal" vem diretamente
       "Market Intelligence & Research - Fluxos"
@@ -353,6 +351,12 @@ def execute_with_queue(caminho_fluxo, schedule_id, now):
         process_queue = [p for p in process_queue if p.poll() is None]
 
     try:
+        # 0) valida FME_EXE
+        if not Path(FME_EXE).exists():
+            logger.error(f"[id={schedule_id}] FME_EXE não encontrado: {FME_EXE}")
+            update_schedule(schedule_id, {'status': 'Erro'})
+            return False
+
         # 1) resolve caminho
         try:
             caminho_fluxo_resolvido = path_transformer(caminho_fluxo)
@@ -362,52 +366,28 @@ def execute_with_queue(caminho_fluxo, schedule_id, now):
             return False
 
         if not caminho_fluxo_resolvido.exists():
-            logger.error(f"[id={schedule_id}] Arquivo não encontrado: {caminho_fluxo_resolvido}")
+            logger.error(f"[id={schedule_id}] Arquivo .fmw não encontrado: {caminho_fluxo_resolvido}")
             update_schedule(schedule_id, {'status': 'Erro'})
             return False
 
-        # 2) monta comando baseado na extensão
-        ext = caminho_fluxo_resolvido.suffix.lower()
-        if ext == '.py':
-            # -u força o Python filho a rodar unbuffered, senão ele detecta que o
-            # stdout é arquivo (não terminal) e segura o log em buffer de bloco,
-            # gravando só no fim. Isso fazia o log parecer "vazio" durante a execução.
-            comando = [sys.executable, '-u', str(caminho_fluxo_resolvido)]
-        elif ext == '.fmw':
-            if not Path(FME_EXE).exists():
-                logger.error(f"[id={schedule_id}] FME_EXE não encontrado: {FME_EXE}")
-                update_schedule(schedule_id, {'status': 'Erro'})
-                return False
-            comando = [FME_EXE, str(caminho_fluxo_resolvido)]
-        else:
-            logger.error(f"[id={schedule_id}] Extensão não suportada: {ext}")
-            update_schedule(schedule_id, {'status': 'Erro'})
-            return False
-
+        comando = [FME_EXE, str(caminho_fluxo_resolvido)]
         cwd = str(caminho_fluxo_resolvido.parent)
-        tipo = "Python" if ext == '.py' else "FME"
-        logger.info(f"[id={schedule_id}] Disparando {tipo} | cmd={' '.join(comando)} | cwd={cwd}")
+        logger.info(f"[id={schedule_id}] Disparando FME | cmd={' '.join(comando)} | cwd={cwd}")
 
         run_ts = now.strftime("%Y%m%d-%H%M%S")
         flow_name = Path(caminho_fluxo_resolvido).stem
-        log_prefix = 'py' if ext == '.py' else 'fme'
-        flow_log = (LOG_DIR / f"{log_prefix}_{schedule_id}_{flow_name}_{run_ts}.log")
+        flow_log = (LOG_DIR / f"fme_{schedule_id}_{flow_name}_{run_ts}.log")
         f_out = open(flow_log, "a", encoding="utf-8", buffering=1)
 
-        # PYTHONUNBUFFERED reforça o -u e também cobre libs que usam logging/os.write
-        env = os.environ.copy()
-        env['PYTHONUNBUFFERED'] = '1'
-        # PYTHONIOENCODING força UTF-8 no stdout/stderr do filho. Sem isso, no Windows
-        # o stdout assume cp1252 e qualquer caractere fora dele (✓, ✗, acentos, emoji)
-        # derruba o script com UnicodeEncodeError na hora de imprimir.
-        env['PYTHONIOENCODING'] = 'utf-8'
-
-        # CREATE_NO_WINDOW só existe no Windows
-        kwargs = dict(shell=False, stdout=f_out, stderr=f_out, cwd=cwd, env=env)
-        if os.name == 'nt':
-            kwargs['creationflags'] = 0x08000000  # CREATE_NO_WINDOW
-
-        processo = subprocess.Popen(comando, **kwargs)
+        CREATE_NO_WINDOW = 0x08000000
+        processo = subprocess.Popen(
+            comando,
+            shell=False,
+            stdout=f_out,
+            stderr=f_out,
+            cwd=cwd,
+            creationflags=CREATE_NO_WINDOW
+        )
 
         # Marcar como executando APÓS Popen OK
         try:
@@ -429,32 +409,16 @@ def execute_with_queue(caminho_fluxo, schedule_id, now):
         return False
 
 def main():
-    global last_cache_refresh
-
     logger.info("=== Scheduler iniciado ===")
     try:
         refresh_cache()
-        last_cache_refresh = datetime.now(pytz.timezone("America/Sao_Paulo"))
-        logger.info("Cache inicial atualizado com sucesso")
     except Exception:
         logger.exception("Falha no refresh_cache inicial")
 
     while True:
         try:
-            now = datetime.now(pytz.timezone("America/Sao_Paulo"))
-
-            # Refresh periódico do cache (a cada CACHE_REFRESH_INTERVAL segundos)
-            try:
-                if (last_cache_refresh is None
-                        or (now - last_cache_refresh).total_seconds() >= CACHE_REFRESH_INTERVAL):
-                    logger.info("Refresh periódico do cache...")
-                    refresh_cache()
-                    last_cache_refresh = now
-                    logger.info("Cache atualizado com sucesso")
-            except Exception:
-                logger.exception("Falha no refresh_cache periódico (continuando com cache anterior)")
-
             df = load_cache()
+            now = datetime.now(pytz.timezone("America/Sao_Paulo"))
             logger.info(f"Heartbeat: {len(df)} agendamentos | running={len(running)} | queue={len(process_queue)}")
 
             for _, linha in df.iterrows():
